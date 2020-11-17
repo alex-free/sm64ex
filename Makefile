@@ -30,6 +30,9 @@ TARGET_WEB ?= 0
 # Makeflag to enable OSX fixes
 OSX_BUILD ?= 0
 
+# Makeflag to enable PowerPC OSX fixes
+PPC_OSX_BUILD ?= 0
+
 # Specify the target you are building for, TARGET_BITS=0 means native
 TARGET_ARCH ?= native
 TARGET_BITS ?= 0
@@ -203,7 +206,7 @@ ifeq ($(TARGET_RPI),1) # Define RPi to change SDL2 title & GLES2 hints
       VERSION_CFLAGS += -DUSE_GLES
 endif
 
-ifeq ($(OSX_BUILD),1) # Modify GFX & SDL2 for OSX GL
+ifeq (,$(filter 1,$(OSX_BUILD)$(PPC_OSX_BUILD))) # Modify GFX & SDL2 for OSX GL
      VERSION_CFLAGS += -DOSX_BUILD
 endif
 
@@ -223,6 +226,11 @@ ifneq (,$(filter $(RENDER_API),D3D11 D3D12))
   ifneq ($(WINDOW_API),DXGI)
     $(warning DirectX renderers require DXGI, forcing WINDOW_API value)
     WINDOW_API := DXGI
+  endif
+else ifeq ($(PPC_OSX_BUILD),1)
+	ifneq ($(RENDER_API),GL_LEGACY)
+    $(warning PowerPC OS X should use the GL_LEGACY RENDER_API, forcing GL_LEGACY value)
+	RENDER_API := GL_LEGACY
   endif
 else
   ifeq ($(WINDOW_API),DXGI)
@@ -496,7 +504,7 @@ ENDIAN_BITWIDTH := $(BUILD_DIR)/endian-and-bitwidth
 
 AS := $(CROSS)as
 
-ifeq ($(OSX_BUILD),1)
+ifeq (,$(filter 1,$(OSX_BUILD)$(PPC_OSX_BUILD)))
 AS := i686-w64-mingw32-as
 endif
 
@@ -530,6 +538,10 @@ else ifeq ($(OSX_BUILD),1)
   CPP := cpp-9 -P
   OBJDUMP := i686-w64-mingw32-objdump
   OBJCOPY := i686-w64-mingw32-objcopy
+else ifeq ($(PPC_OSX_BUILD),1)
+  CPP := cpp -P
+  OBJDUMP := i686-w64-mingw32-objdump
+  OBJCOPY := i686-w64-mingw32-objcopy
 else # Linux & other builds
   CPP := $(CROSS)cpp -P
   OBJCOPY := $(CROSS)objcopy
@@ -546,6 +558,10 @@ BACKEND_CFLAGS := -DRAPI_$(RENDER_API)=1 -DWAPI_$(WINDOW_API)=1 -DAAPI_$(AUDIO_A
 BACKEND_CFLAGS += $(foreach capi,$(CONTROLLER_API),-DCAPI_$(capi)=1)
 BACKEND_LDFLAGS :=
 SDL2_USED := 0
+# GCC 4.9 needs this set explicitly
+ifeq ($(PPC_OSX_BUILD),1)
+  BACKEND_CFLAGS += -std=gnu11 -I/usr/local/include
+endif
 
 # for now, it's either SDL+GL or DXGI+DirectX, so choose based on WAPI
 ifeq ($(WINDOW_API),DXGI)
@@ -563,7 +579,7 @@ else ifeq ($(WINDOW_API),SDL2)
     BACKEND_LDFLAGS += -lglew32 -lglu32 -lopengl32
   else ifeq ($(TARGET_RPI),1)
     BACKEND_LDFLAGS += -lGLESv2
-  else ifeq ($(OSX_BUILD),1)
+  else ifeq (,$(filter 1,$(OSX_BUILD)$(PPC_OSX_BUILD)))
     BACKEND_LDFLAGS += -framework OpenGL `pkg-config --libs glew`
   else
     BACKEND_LDFLAGS += -lGL
@@ -688,7 +704,9 @@ else ifeq ($(TARGET_RPI),1)
 
 else ifeq ($(OSX_BUILD),1)
   LDFLAGS := -lm $(BACKEND_LDFLAGS) -no-pie -lpthread
-
+# Flag -no-pie not available in MacPorts GCC 4.9, and most likely is not neccesary anyways according to https://opensource.apple.com/source/ld64/ld64-134.9/ld64-134.9/doc/man/man1/ld.1.auto.html
+else ifeq ($(PPC_OSX_BUILD),1)
+  LDFLAGS := -lm $(BACKEND_LDFLAGS) -lpthread
 else
   LDFLAGS := $(BITS) -march=$(TARGET_ARCH) -lm $(BACKEND_LDFLAGS) -no-pie -lpthread
   ifeq ($(DISCORDRPC),1)
