@@ -227,11 +227,6 @@ ifneq (,$(filter $(RENDER_API),D3D11 D3D12))
     $(warning DirectX renderers require DXGI, forcing WINDOW_API value)
     WINDOW_API := DXGI
   endif
-else ifeq ($(LEGACY_OSX_BUILD),1)
-	ifneq ($(RENDER_API),GL_LEGACY)
-    $(warning PowerPC OS X should use the GL_LEGACY RENDER_API, forcing GL_LEGACY value)
-	RENDER_API := GL_LEGACY
-  endif
 else
   ifeq ($(WINDOW_API),DXGI)
     $(error DXGI can only be used with DirectX renderers)
